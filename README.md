@@ -6,6 +6,7 @@ It supports fetching names for single or multiple extensions and exporting the r
 ## Features
 
 - Fetch the name of a Chrome extension using its ID.
+- Supports Edge extensions as well.
 - Support for fetching names of multiple extensions from a file.
 - Export results to CSV, Excel, or JSON formats.
 - Proxy support for requests.
