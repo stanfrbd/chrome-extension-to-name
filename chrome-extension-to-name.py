@@ -15,6 +15,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 def get_extension_name_from_id(extension_id, proxy, browser=None):
     """
     Fetch the name of a Chrome or Edge extension using its ID.
+    Returns (name, browser, url)
     """
     urls = []
     if browser == "chrome" or browser is None:
@@ -34,11 +35,11 @@ def get_extension_name_from_id(extension_id, proxy, browser=None):
                 title_tag = soup.find("title")
                 if title_tag:
                     name = title_tag.text.strip().split("-")[0].strip()
-                    return name, browser_name
+                    return name, browser_name, url
             else:
                 h1_tag = soup.find("h1")
                 if h1_tag:
-                    return h1_tag.text.strip(), browser_name
+                    return h1_tag.text.strip(), browser_name, url
         except Exception:
             continue
     raise Exception("Extension name not found")
@@ -47,6 +48,7 @@ def get_extension_name_from_id(extension_id, proxy, browser=None):
 async def fetch_extension_name(session, extension_id, proxy, browser=None):
     """
     Asynchronously fetch the name of a Chrome or Edge extension using its ID.
+    Returns (extension_id, name, browser, url)
     """
     urls = []
     if browser == "chrome" or browser is None:
@@ -65,14 +67,14 @@ async def fetch_extension_name(session, extension_id, proxy, browser=None):
                     title_tag = soup.find("title")
                     if title_tag:
                         name = title_tag.text.strip().split("-")[0].strip()
-                        return extension_id, name, browser_name
+                        return extension_id, name, browser_name, url
                 else:
                     h1_tag = soup.find("h1")
                     if h1_tag:
-                        return extension_id, h1_tag.text.strip(), browser_name
+                        return extension_id, h1_tag.text.strip(), browser_name, url
         except Exception:
             continue
-    return extension_id, "Extension name not found", ""
+    return extension_id, "Extension name not found", "", ""
 
 
 async def get_extension_names_from_file(file_path, proxy, browser=None):
@@ -81,29 +83,34 @@ async def get_extension_names_from_file(file_path, proxy, browser=None):
     async with aiohttp.ClientSession() as session:
         tasks = [fetch_extension_name(session, extension_id, proxy, browser) for extension_id in extension_ids]
         results = await asyncio.gather(*tasks)
-    # Build dictionary: key = extension_id, value = (name, browser)
-    return {extension_id: (name, browser) for extension_id, name, browser in results}
+    # Build dictionary: key = extension_id, value = (name, browser, url)
+    return {extension_id: (name, browser, url) for extension_id, name, browser, url in results}
 
 
 def export_data(data, output_file, filetype):
     if filetype == "csv":
         with open(output_file, "w", newline="") as csvfile:
             writer = csv.writer(csvfile)
-            writer.writerow(["Extension ID", "Extension Name", "Browser"])
+            writer.writerow(["Extension ID", "Extension Name", "Browser", "URL"])
             for extension_id, value in data.items():
                 extension_name = value[0]
                 browser = value[1] if len(value) > 1 else ""
-                writer.writerow([extension_id, extension_name, browser])
+                url = value[2] if len(value) > 2 else ""
+                writer.writerow([extension_id, extension_name, browser, url])
     elif filetype == "excel":
-        rows = [[extension_id, value[0], value[1] if len(value) > 1 else ""] for extension_id, value in data.items()]
-        df = pd.DataFrame(rows, columns=["Extension ID", "Extension Name", "Browser"])
+        rows = [
+            [extension_id, value[0], value[1] if len(value) > 1 else "", value[2] if len(value) > 2 else ""]
+            for extension_id, value in data.items()
+        ]
+        df = pd.DataFrame(rows, columns=["Extension ID", "Extension Name", "Browser", "URL"])
         with pd.ExcelWriter(output_file, engine="xlsxwriter") as writer:
             df.to_excel(writer, index=False, sheet_name="Extensions")
             worksheet = writer.sheets["Extensions"]
             worksheet.autofilter(0, 0, df.shape[0], df.shape[1] - 1)
     elif filetype == "json":
         serializable_data = {
-            k: {"Extension Name": v[0], "Browser": v[1] if len(v) > 1 else ""} for k, v in data.items()
+            k: {"Extension Name": v[0], "Browser": v[1] if len(v) > 1 else "", "URL": v[2] if len(v) > 2 else ""}
+            for k, v in data.items()
         }
         with open(output_file, "w") as jsonfile:
             json.dump(serializable_data, jsonfile, indent=4)
@@ -132,8 +139,8 @@ if __name__ == "__main__":
             sys.exit(1)
     elif args.extension_id:
         try:
-            name, browser = get_extension_name_from_id(args.extension_id, args.proxy, args.browser)
-            extension_names[args.extension_id] = (name, browser)
+            name, browser, url = get_extension_name_from_id(args.extension_id, args.proxy, args.browser)
+            extension_names[args.extension_id] = (name, browser, url)
         except Exception as e:
             print(e)
             sys.exit(1)
@@ -153,4 +160,5 @@ if __name__ == "__main__":
     for extension_id, value in extension_names.items():
         extension_name = value[0]
         browser = value[1] if len(value) > 1 else ""
-        print(f"{extension_id}: {extension_name} ({browser})")
+        url = value[2] if len(value) > 2 else ""
+        print(f"Extension ID: {extension_id}\n  Name: {extension_name}\n  Browser: {browser}\n  URL: {url}\n")
